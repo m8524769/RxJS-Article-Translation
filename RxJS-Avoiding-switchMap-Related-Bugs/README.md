@@ -5,6 +5,8 @@
 > 译者：[yk](https://github.com/m8524769)；
 > 翻译内容有些部分借鉴了 [vannxy](https://link.zhihu.com/?target=https%3A//github.com/vaanxy) 的 [RxJS: 避免 switchMap 的相关 Bug](https://zhuanlan.zhihu.com/p/55199532)，深表感谢
 
+![](assets/1_azsyvu2XzTLbL27PerCnJA.jpeg)
+
 不久前，[Victor Savkin](https://medium.com/@vsavkin) 发布了一篇关于在 Angular 应用中使用 NgRx effects 时，因滥用 `switchMap` 而导致的一个不易察觉的 bug 的推文：
 
 > [**Victor Savkin**](https://twitter.com/victorsavkin)<br/>
