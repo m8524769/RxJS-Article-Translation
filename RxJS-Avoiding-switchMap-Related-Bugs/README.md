@@ -16,7 +16,7 @@
 
 让我们以购物车为例，看看下面的 effect 和 epic 是怎么滥用 `switchMap` 的，然后我们再考虑用一些替代的操作符。
 
-这是一个滥用 `switchMap` 的 NgRx effect ：
+这是一个滥用 `switchMap` 的 NgRx effect：
 
 ```typescript
 @Effect()
@@ -32,7 +32,7 @@ public removeFromCart = this.actions.pipe(
 );
 ```
 
-这是一个与之等价的 `redux-observable` epic ：
+这是一个与之等价的 `redux-observable` epic：
 
 ```typescript
 const removeFromCart = actions$ => actions$.pipe(
@@ -61,7 +61,7 @@ const removeFromCart = actions$ => actions$.pipe(
 - 仅删除部分被点击的商品；
 - 在后端删除了部分被点击的商品，而前端的购物车却没反应。
 
-很明显，这是一个 bug 。
+很明显，这是一个 bug。
 
 不幸的是，当需要使用 flattening operator（打平操作符）时，`switchMap` 通常会被建议是首选，但这并不是在所有场景下都是安全的。
 
@@ -84,21 +84,21 @@ RxJS 共有四个 flattening operator 可供选择：
 
 ## concatMap
 
-虽然从购物车中移除商品的顺序可能无关紧要，但也有一些操作，顺序对它们来说十分重要。
+虽然从购物车中移除商品的顺序可能无关紧要，但也有一些操作对执行顺序是有严格要求的。
 
 再举个例子，如果我们的购物车有一个用于增加商品数量的按钮，则以正确的顺序来处理调度的操作是非常重要的。否则，前后端的商品数量可能最终会不同步。
 
-对于顺序十分重要的操作，我们应该使用 `concatMap`，其实 `concatMap` 就相当于使用 `mergeMap` 时将其允许并发量参数 `concurrent` 设置为 `1` 。也就是说，使用 `concatMap` 的 effect/epic 每次只会处理一个后端请求，每个操作都会按照它们被调用的顺序排队。
+对于顺序十分重要的操作，我们应该使用 `concatMap`，其实 `concatMap` 就相当于使用 `mergeMap` 时将其“允许并发量”参数 `concurrent` 设置为 `1` 。也就是说，使用 `concatMap` 的 effect/epic 每次只会处理一个后端请求，每个操作都会按照它们被调用的顺序排队。
 
 `concatMap` 是安全且保守的选择。如果你不确定在 effect/epic 中使用何种 flattening operator 时，就用 `concatMap` 吧。
 
 ## switchMap
 
-每当相同类型的操作被分配时，使用 `switchMap` 会中止之前已被挂起的后端请求。这使 `switchMap` 对于增加、修改以及删除操作来说不那么安全。甚至在处理读操作时也会引入 bug 。
+每当相同类型的操作被调用时，使用 `switchMap` 会中止之前已被挂起的后端请求。这使 `switchMap` 对于增加、修改以及删除操作来说不那么安全。甚至在处理读操作时也会引入 bug 。
 
 `switchMap` 是否适合特定的读操作取决于当另一个相同类型的操作被调用时，后端对先前操作做出的响应是否还有用。让我们来看看一个使用 `switchMap` 的操作是如何引入 bug 的。
 
-如果我们的购物车中的每个商品都有一个“详情”按钮，用于在行内显示一些商品的详细信息，effect/epic 则使用 `switchMap` 来处理该按钮点击动作，这里就引入了一个竞争条件。如果用户一连点击了多个商品的“详情”按钮，那么这些被点击的商品是否会显示详细信息则取决于用户点击按钮的频率。
+如果我们的购物车中的每个商品都有一个“详情”按钮，用于在行内显示一些商品的详细信息，effect/epic 则使用 `switchMap` 来处理该按钮的点击动作，这里又引入了一个竞争条件。如果用户一连点击了多个商品的“详情”按钮，那么这些被点击的商品是否会显示详细信息则同样取决于用户点击按钮的频率。
 
 和 `RemoveFromCart` 操作一样，使用 `mergeMap` 就可以解决这个问题了。
 
@@ -108,19 +108,19 @@ RxJS 共有四个 flattening operator 可供选择：
 
 如果我们的购物车要显示商品的总价加上运费，对购物车内容做出的每个更改都会触发一次 `GetCartTotal` 操作。这时在 effect/epic 中使用 `switchMap` 来处理 `GetCartTotal` 是完全合适的。
 
-如果当 effect/epic 正在处理一个 `GetCartTotal` 操作时，购物车的内容发生了变动，那么对当前处理中的请求做出的响应将会是过时的，也就是更改之前购物车内的商品总数，因此中止正在处理中的请求是没有任何问题的。事实上，相较于挂起请求，等其完成之后再将其忽略，或更有甚者把过期的响应也渲染出来，直接中止请求会是更好的选择。
+如果当 effect/epic 正在处理一个 `GetCartTotal` 操作时，购物车的内容发生了变动，那么对当前处理中的请求做出的响应将会是过时的，也就是更改之前购物车内的商品总数，因此中止正在处理中的请求是没有任何问题的。事实上，相较于挂起请求，等其完成之后再将其忽略，或更有甚者把过期的响应数据也渲染出来，直接中止请求会是更好的选择。
 
 ## exhaustMap
 
 `exhaustMap` 或许是最不为人知的一个 flattening operator 了，但它很好解释：你可以认为它是 `switchMap` 的对立物。
 
-当使用 `switchMap` 时，之前挂起的后端请求会被中止，也就是说更倾向于处理最新调来的操作。而当使用 `exhaustMap` 时，如果当前有正在处理的后端请求，那么新发来的操作都会被忽略。
+当使用 `switchMap` 时，之前挂起的后端请求会被中止，也就是说更倾向于处理最新调来的操作。而当使用 `exhaustMap` 时，如果当前有正在处理的后端请求，那么新调来的操作都会被忽略。
 
 让我们来看看 `exhaustMap` 的一个适用场景。
 
 开发人员应该对有一类用户再熟悉不过了：按钮狂击者。当他们点击一个按钮却发现什么都没发生时，就会继续点点点一直点。
 
-假如我们的购物车有一个刷新按钮，effect/epic 使用 `switchMap` 来处理刷新，每次点击按钮都会中止先前被挂起的刷新操作。所以狂点按钮没有任何意义，而且可能使用户等待更长的时间，直到刷新被执行。
+假如我们的购物车有一个刷新按钮，effect/epic 使用 `switchMap` 来处理刷新，那么每次点击按钮都会中止先前被挂起的刷新操作。所以狂点按钮没有任何意义，而且可能使用户等待更长的时间，直到刷新被执行。
 
 如果在 effect/epic 中使用 `exhaustMap` 来替代 `switchMap` 处理刷新的话，多余的点击将会被忽略。
 
@@ -135,8 +135,8 @@ RxJS 共有四个 flattening operator 可供选择：
 
 ## 使用 TSLint 来避免滥用 switchMap
 
-我在 `rxjs-tslint-rules` 包里添加了一条 [`rxjs-no-unsafe-switchmap`](https://github.com/cartant/rxjs-tslint-rules) 规则。
+我曾在 `rxjs-tslint-rules` 包里添加了一条 [`rxjs-no-unsafe-switchmap`](https://github.com/cartant/rxjs-tslint-rules) 规则。
 
 该规则可以识别 NgRx effects 和 `redux-observable` epics，并确定它们的操作类型，然后根据操作类型搜索具体的动词（例如：`add`，`update`，`remove` 等等）。它有一些合理的默认值，如果你觉得这些默认值过于常规，也可以对它进行[配置](https://github.com/cartant/rxjs-tslint-rules#rxjs-no-unsafe-switchmap)。
 
-在启用了该规则后，我在我去年写的一些应用上运行了 TSLint ，发现了不少 effects 在以不安全的方式使用 `switchMap` 。所以，谢谢你的推文，Victor。
+在启用了该条规则后，我在我去年写的一些应用上运行了 TSLint ，发现了不少 effects 都在以不安全的方式使用 `switchMap`。所以，谢谢你的推文，Victor。
