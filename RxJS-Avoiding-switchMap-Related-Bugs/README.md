@@ -1,7 +1,7 @@
 # [译] RxJS: 避免因滥用 switchMap 而导致错误
 
 > 原文链接：[RxJS: Avoiding switchMap-Related Bugs](https://blog.angularindepth.com/switchmap-bugs-b6de69155524)<br/>
-> 原文作者：[Nicholas Jamieson](https://blog.angularindepth.com/@cartant)<br/>
+> 原文作者：[Nicholas Jamieson](https://blog.angularindepth.com/@cartant)；发表于2018年3月12日<br/>
 > 译者：[yk](https://github.com/m8524769)；
 > 翻译内容有些部分借鉴了 [vannxy](https://link.zhihu.com/?target=https%3A//github.com/vaanxy) 的 [RxJS: 避免 switchMap 的相关 Bug](https://zhuanlan.zhihu.com/p/55199532)，深表感谢
 

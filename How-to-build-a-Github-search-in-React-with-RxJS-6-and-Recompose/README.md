@@ -1,7 +1,7 @@
 # [译] 如何使用 RxJS 6 + Recompose 在 React 中构建 Github 搜索功能
 
 > 原文链接：[How to build GitHub search functionality in React with RxJS 6 and Recompose](https://medium.freecodecamp.org/how-to-build-a-github-search-in-react-with-rxjs-6-and-recompose-e9c6cc727e7f)<br/>
-> 原文作者：[Yazeed Bzadough](https://medium.freecodecamp.org/@yazeedb)<br/>
+> 原文作者：[Yazeed Bzadough](https://medium.freecodecamp.org/@yazeedb)；发表于2018年8月7日<br/>
 > 译者：[yk](https://github.com/m8524769)；如需转载，请注明[出处](https://github.com/m8524769/RxJS-Article-Translation)，谢谢合作！
 
 ![](assets\1_ZeifRZJH1QudGiIiA6En4Q.png)
