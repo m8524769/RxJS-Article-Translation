@@ -4,7 +4,7 @@
 > 原文作者：[Yazeed Bzadough](https://medium.freecodecamp.org/@yazeedb)；发表于2018年8月7日<br/>
 > 译者：[yk](https://github.com/m8524769)；如需转载，请注明[出处](https://github.com/m8524769/RxJS-Article-Translation)，谢谢合作！
 
-![](assets\1_ZeifRZJH1QudGiIiA6En4Q.png)
+![](assets/1_ZeifRZJH1QudGiIiA6En4Q.png)
 
 本篇文章适合有 React 和 RxJS 使用经验的读者。以下仅仅是我个人在设计下面这个 UI 时觉得有用的模式，在此分享给大家。
 
