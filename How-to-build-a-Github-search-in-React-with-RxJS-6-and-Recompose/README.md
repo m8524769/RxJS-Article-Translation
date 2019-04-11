@@ -8,7 +8,7 @@
 
 本篇文章适合有 React 和 RxJS 使用经验的读者。以下仅仅是我个人在设计下面这个 UI 时觉得有用的模式，在此分享给大家。
 
-这是我们的成果：
+这将会是我们的成果：
 
 ![](assets/1_KeoXx3EaGVrHXaZzK_QBzA.gif)
 
@@ -70,7 +70,7 @@ Recompose 的流遵循了 [`ECMAScript 的 Observable 提案`](https://github.co
 
 Recompose 并不知道我们使用的具体是哪个库，因此它提供了 `setObservableConfig` 来将 ES Observable 转换为任何我们需要的形式。
 
-首先，在 `src` 中创建一个名为 `observableConfig.js` 的新文件。
+首先，在 `src` 中创建一个名为 `observableConfig.js` 的文件。
 
 然后添加如下代码，使 Recompose 兼容 RxJS 6：
 
@@ -182,7 +182,7 @@ const App = componentFromStream(prop$ => {
 
 ### 先有鸡还是先有蛋？
 
-但要使用 `combineLatest`，`stream` 和 `prop$` 都必须被发射。而在 `prop$` 发射之前，`stream` 是不会被发射的，反之亦然。
+但要使用 `combineLatest`，`stream` 和 `prop$` 都必须被发射（emit）。而在 `prop$` 发射之前，`stream` 是不会被发射的，反之亦然。
 
 我们可以通过给 `stream` 一个初始值来解决这个问题。
 
@@ -347,7 +347,7 @@ return combineLatest(prop$, value$).pipe(
 );
 ```
 
-现在，你输入的值将会在一秒后渲染到屏幕上。
+现在，你输入的值将会在 1s 后渲染到屏幕上。
 
 ![](assets/1_ti-OF_cqiKmQx1iTZZJFrA.gif)
 
@@ -474,7 +474,7 @@ switchMap(url =>
 
 ### Error 组件
 
-创建一个新组件，`src/Error/index.js`：
+在 `src/Error/index.js` 创建一个新组件：
 
 ```javascript
 import React from 'react';
