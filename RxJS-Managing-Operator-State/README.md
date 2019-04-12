@@ -6,7 +6,7 @@
 
 ![](assets/1_yHfcFpUTJiBKy6bvQFDPmA.jpeg)
 
-> 摄影：Victoire Joncheray，来自 Unsplash
+> 摄影：[Victoire Joncheray](https://unsplash.com/photos/XsP7GCLMWjM?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText)，来自 [Unsplash](https://unsplash.com/?utm_source=unsplash&utm_medium=referral&utm_content=creditCopyText)
 
 在 RxJS 5.5 引入了[管道操作符（pipeable operators）](https://blog.angularindepth.com/rxjs-understanding-lettable-operators-fe74dda186d3)之后，编写用户级（userland）操作符变得更为简单了。
 
