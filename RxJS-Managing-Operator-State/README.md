@@ -10,7 +10,7 @@
 
 在 RxJS 5.5 引入了[管道操作符（pipeable operators）](https://blog.angularindepth.com/rxjs-understanding-lettable-operators-fe74dda186d3)之后，编写用户级（userland）操作符变得更为简单了。
 
-管道操作符属于高阶函数（higher-order function）：即返回值为函数的函数。所返回的函数接受一个 observable 对象作为参数，并返回一个 observable 对象。所以，要创建一个操作符，你不必划分 `Operator` 和 `Subscriber`，只要写一个函数就行了。
+管道操作符属于高阶函数（higher-order function）：即返回值为函数的函数。所返回的函数接受一个 observable（可观察对象）作为参数，并返回一个 observable。所以，要创建一个操作符，你不必划分 `Operator` 和 `Subscriber`，只要写一个函数就行了。
 
 这听起来很简单。
 
@@ -40,7 +40,7 @@ export function debug<T>(): MonoTypeOperatorFunction<T> {
 
 第一个问题是：我们的操作符不具有引用透明（referentially transparent）性。当一个函数的返回值可以替代该函数而不影响程序运行，那么我们称这个函数是引用透明的。
 
-让我们来看看当这个操作符的返回值被用于组成一些 observable 对象时会发生什么：
+让我们来看看当这个操作符的返回值与多个 observables 进行组合时会发生什么：
 
 ```typescript
 import { range } from "rxjs";
