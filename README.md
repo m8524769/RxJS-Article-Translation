@@ -9,7 +9,7 @@ My zh_CN is very very bed, if there is something wrong, welcome [tell me](https:
 --- | --- | :---:
 [RxJS: 操作符状态管理](RxJS-Managing-Operator-State/README.md) | 2019-2-12 | [Medium](https://medium.com/@cartant/rxjs-managing-operator-state-2f20681df21d)
 [如何使用 RxJS 6 + Recompose 在 React 中构建 Github 搜索功能](How-to-build-a-Github-search-in-React-with-RxJS-6-and-Recompose/README.md) | 2018-8-7 | [Medium](https://medium.freecodecamp.org/how-to-build-a-github-search-in-react-with-rxjs-6-and-recompose-e9c6cc727e7f)
-[认识 rxjs 中的 Subjects](Understanding-rxjs-Subjects/README.md) | 2018-4-17 | [Medium](https://medium.com/@luukgruijs/understanding-rxjs-subjects-339428a1815b)
+[认识 rxjs 中的 Subject](Understanding-rxjs-Subjects/README.md) | 2018-4-17 | [Medium](https://medium.com/@luukgruijs/understanding-rxjs-subjects-339428a1815b)
 [RxJS: 避免因滥用 switchMap 而导致错误](RxJS-Avoiding-switchMap-Related-Bugs/README.md) | 2018-3-12 | [Medium](https://blog.angularindepth.com/switchmap-bugs-b6de69155524)
 
 如果你想看到更多类似的翻译作品，可以看看隔壁 [RxJS 中文社区](https://github.com/RxJS-CN)的[同类优秀文章](https://github.com/RxJS-CN/rxjs-articles-translation)。
