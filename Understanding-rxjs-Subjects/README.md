@@ -4,7 +4,7 @@
 > 原文作者：[Luuk Gruijs](https://medium.com/@luukgruijs)；发表于2018年4月17日<br/>
 > 译者：[yk](https://github.com/m8524769)；如需转载，请注明[出处](https://github.com/m8524769/RxJS-Article-Translation)，谢谢合作！
 
-RxJS 是真的好用，它可以帮助你更好地编辑/订阅数据流。虽然单用 Observable（可观察对象）就可以做很多事情，但 RxJS 还是提供了多种用于操控数据流的类，Subject（主题）就是其中之一。
+RxJS 是真的好用，它可以帮助我们更好地编辑/订阅数据流。虽然单用 Observable（可观察对象）就可以做很多事情，但 RxJS 还是提供了多种用于操控数据流的类，Subject（主题）就是其中之一。
 
 如果你还不知道 Observable 是什么的话，建议先读读我的另一篇文章：[Understanding, creating and subscribing to observables in Angular](https://medium.com/@luukgruijs/understanding-creating-and-subscribing-to-observables-in-angular-426dbf0b04a3)。如果你觉得你明白 Observable 是什么意思，那行咱们继续！
 
@@ -40,7 +40,7 @@ observable.subscribe((data) => {
 
 > 译者注：每当我们调用一次 `Observable.subscribe()` 时，一个新的 _Observable execution_ 就会被启动。详见 [Observable](https://rxjs-dev.firebaseapp.com/api/index/class/Observable#subscribe)。
 
-**Subject 也可比作事件发射器（EventEmitter），管理着多个已注册的事件监听器。** 当我们订阅 Subject 时，它并不会启动一个新的 execution 来传送数据。而是在现有观察者列表中注册一个新的观察者，仅此而已。
+**Subject 也可比作事件发射器（EventEmitter），其中注册了多个事件监听器。** 当我们订阅 Subject 时，它并不会启动一个新的 execution 来传送数据。而是在现有观察者列表中注册一个新的观察者，仅此而已。
 
 ## 如何在多播中使用 Subject
 
