@@ -20,7 +20,7 @@ Observable（可观察对象）在批处理作业中表现优秀，推荐使用�
 
 以下是一些批处理作业的例子：
 
-- 遍历 API 的分页数据列表，获取每个记录的详细信息，并在 ElasticSearch 中对其进行索引。
+- 遍历 API 的分页数据列表，获取每条记录的详细信息，并在 ElasticSearch 中对其进行索引。
 - 从数据库中获取数据，与其他数据进行聚合，生成 HTML 报告并通过电子邮件的形式发送出去。
 - 读取数据库并为网络爬虫生成 sitemap.xml。
 - 使用种子数据（seed data）初始化数据库，可以是随机数据。
@@ -64,11 +64,243 @@ _本节更适合有 RxJS 使用经验的读者，初学者可随意跳过。_
 
 我发现 RxJS 中的几乎所有无损背压方案都需要在声明 observable 时提供整个数据集，例如：`from(entireDatasetArray)`，而这是不现实的。所以，我们需要一种“响应式拉取（reactive pull）”的方式来替代，也就是控制数据拉取的频率。
 
-在本文提供的示例中，我将借助 RxJS 的 `Subject` 来实现一种更为清晰的的背压管理解决方案。简而言之，就是在处理了一批数据之后，调用 `Subject.next()` 来拉取/获取下一批数据。这样，我们就可以随时控制数据流的大小。灵感源于以下两篇文章：
+在本文提供的示例中，我将借助 RxJS 的 `Subject` 来实现一种更为清晰的的背压管理解决方案。简而言之，就是在处理了一批数据之后，调用 `Subject.next()` 来拉取/获取下一批数据。这样，我们就可以随时控制数据流的大小。以下两篇文章是我的灵感来源：
 
 - [RXJS control observable invocation](https://stackoverflow.com/a/35347136/684893)
 - [Lossless Backpressure in RxJS](https://itnext.io/lossless-backpressure-in-rxjs-b6de30a1b6d4)
 
-## 示例场景及设定
+## 示例——场景及设定
 
-我们需要一个相对真实的批处理场景来评估现有的解决方案。
+我们需要一个相对真实的批处理场景来评估现有的解决方案。为了使其有趣一些，我会施加一些限制。下面就是我们将要处理的场景：
+
+1. 以分页的方式从数据库中获取公司列表（每页 10 条）。每次获取的记录条数应当为 `batchSize` 的值，并且内存每次读取的记录条数不应超过 `maxQueueSize`。另外，同时执行的数据库查询语句条数也不应当超过 `retrieveCompaniesConcurrency`。
+2. 获取每个公司的订单列表。假设其对应了一个 API 请求，为了避免频繁请求而触发访问限制，我们会设置 `retrieveOrdersConcurrency` 参数来控制请求的并发量。
+3. 将收集到的各公司订单信息做成报告，并通过电子邮件的方式发给他们。假设我们有一个处理电子邮件的 API 服务器，它可以单独地收发邮件，但在同时收发多个邮件的情况下性能会更好。我们应当将单个 API 请求中的邮件数量限制为 `bulkEmailCount`。同时，也要像获取订单一样设置一个 `bulkEmailConcurrency` 来限制访问的频率。
+
+为了演示该场景，我们将模拟上述三个异步操作。
+
+1. `retrieveCompanies(limit: number, offset: number): Promise<Company[]>` 使用 [faker.js]() 来生成公司数据，数据量为 `totalCompanyCount`，支持 `limit` 和 `offset` 参数来获取分页数据。
+2. `retrieveCompanyOrders(company: Company): Promise<Order[]>` 再次使用 faker.js 为每个公司生成个数为 `ORDERS_PER_COMPANY` 的订单。
+3. `sendBulkEmails(emailData: Company[]): Promise<void>` 一个无操作（no-op）调用，因为我们不期望得到任何回复。
+
+我们将用 `setTimeout()` 为每个操作设置一个延时，从而模拟一个真实的异步调用环境，且所有的延时都是可调整的参数。出于本文的目的，我们将使用以下这些常量来设定参数，以便公平地比较各个解决方案。
+
+```typescript
+export const defaultBatchProcessingOptions: BatchProcessingOptions = {
+  batchSize: 5,
+  maxQueueSize: 15,
+  retrieveCompaniesConcurrency: 1,
+  retrieveOrdersConcurrency: 5,
+  bulkEmailConcurrency: 5,
+  maxBulkEmailCount: 5,
+};
+const TOTAL_COMPANY_COUNT = 100;
+const RETRIEVE_ONE_COMPANY_DELAY = 6;
+const RETRIEVE_ONE_COMPANY_ORDER_DELAY = 5;
+const ORDERS_PER_COMPANY = 6;
+const SEND_BULK_EMAILS_DELAY = 60;
+```
+
+在设置了这些参数后，我们可以计算出：
+
+- `retrieveCompanies()` 将耗时 30ms（`batchSize * RETRIEVE_ONE_COMPANY_DELAY === 30`）
+- `retrieveCompanyOrders()` 也将耗时 30ms（`ORDERS_PER_COMPANY * RETRIEVE_ONE_COMPANY_DELAY === 30`）
+- `sendBulkEmails()` 将耗时 60ms（`SEND_BULK_EMAILS_DELAY`）。
+
+观察延时的调整以及随机因素的添加将如何影响各个方法的运行时间是个十分有趣的过程，其结果并非总是呈线性的。本文将尝试各种各样的参数配置，你可以随意更改这些参数。正如我们稍后将看到的，优化后的 observable 解决方案实际上可以利用在其他方案中难以解决的随机性。
+
+并非所有方案都要用到这些参数，有些参数仅在一些进阶场景下才用得到。对于简单的场景，我们不会违反任何约束条件，因为那样效率太低了。
+
+在 `utils.ts` 中，你可以找到上述异步操作的完整实现，包括生成随机数据以及批处理的参数选项。
+
+utils.ts：
+
+```typescript
+import { address, commerce, company, date, random } from "faker";
+
+export interface Company {
+  id: number;
+  name: string;
+  city: string;
+  countryCode: string;
+  orders?: Order[];
+}
+export interface Order {
+  id: number;
+  productName: string;
+  price: string;
+  purchaseDate: Date;
+}
+export interface BatchProcessingOptions {
+  /** The amount of companies to fetch in one request. */
+  batchSize?: number;
+  /** The amount of companies to be queued for processing. */
+  maxQueueSize?: number;
+  /** The number of concurrent requests to fetch companies.  Should be higher than batchSize. */
+  retrieveCompaniesConcurrency?: number;
+  /** The number of concurrent requests to fetch a company's orders. */
+  retrieveOrdersConcurrency?: number;
+  /** The number of concurrent requests to send bulk email.  Should be lower than batchSize. */
+  bulkEmailConcurrency?: number;
+  /** The maximum number of emails to send in one request. */
+  maxBulkEmailCount?: number;
+}
+
+export const defaultBatchProcessingOptions: BatchProcessingOptions = {
+  batchSize: 5,
+  maxQueueSize: 15,
+  retrieveCompaniesConcurrency: 1,
+  retrieveOrdersConcurrency: 5,
+  bulkEmailConcurrency: 5,
+  maxBulkEmailCount: 5,
+};
+
+// retrieveCompanies() will return no data after this limit is reached.
+const TOTAL_COMPANY_COUNT = 100;
+
+/**
+ * Enable to introduce anomalies. This will multiply the delay of
+ *   `retrieveCompanyOrders()` by `ANOMALY_MULTIPLIER` for every
+ *   `ANOMALY_FREQUENCY` companies.
+ */
+const USE_ANOMALIES = false;
+const ANOMALY_FREQUENCY = 10;
+const ANOMALY_MULTIPLIER = 10;
+
+// Enable to get random delays and order counts.
+const USE_RANDOMNESS = false;
+
+const RETRIEVE_ONE_COMPANY_DELAY = () =>
+  USE_RANDOMNESS ? random.number({ min: 4, max: 8 }) : 6;
+const RETRIEVE_ONE_COMPANY_ORDER_DELAY = () =>
+  USE_RANDOMNESS ? random.number({ min: 3, max: 7 }) : 5;
+const ORDERS_PER_COMPANY = () =>
+  USE_RANDOMNESS ? random.number({ min: 4, max: 8 }) : 6;
+const SEND_BULK_EMAILS_DELAY = () =>
+  USE_RANDOMNESS ? random.number({ min: 40, max: 80 }) : 60;
+
+export const validateBatchProcessingOptions = (
+  options: BatchProcessingOptions,
+) => {
+  if (options.maxQueueSize < options.batchSize) {
+    console.warn(
+      `Invalid options: maxQueueSize ${
+        options.maxQueueSize
+      } must be higher than batchSize ${options.batchSize}.`,
+    );
+    return;
+  }
+  if (options.maxBulkEmailCount > options.batchSize) {
+    console.warn(
+      `Invalid options: maxBulkEmailCount ${
+        options.maxBulkEmailCount
+      } cannot be higher than ${options.batchSize}.`,
+    );
+    return;
+  }
+};
+
+/**
+ * Fetch a chunk or batch of the primary object to iterate on.
+ * Examples of a datasource could be:
+ *   - API `fetch('https://swapi.co/api/people/')`
+ *   - DB `select * from companies limit ${limit} offset ${offset}`
+ * Another example is reading a file.  Libraries that read in chunks or
+ *   line-by-line can be used in RxJS more natively.a
+ */
+export const retrieveCompanies = async (
+  limit: number,
+  offset: number,
+): Promise<Company[]> => {
+  await new Promise(resolve =>
+    setTimeout(resolve, RETRIEVE_ONE_COMPANY_DELAY() * limit),
+  );
+  if (offset > TOTAL_COMPANY_COUNT) {
+    return [];
+  }
+  return [...Array(Math.min(TOTAL_COMPANY_COUNT - offset, limit)).keys()].map(
+    (i): Company => ({
+      id: i + offset,
+      name: company.companyName(),
+      city: address.city(),
+      countryCode: address.countryCode(),
+    }),
+  );
+};
+
+/**
+ * For each company, fetch the company's orders.  This serves as an example
+ *   where we need to fetch additional data for each of the primary objects
+ *   we are iterating over.
+ * Examples of a datasource could be:
+ *   - API `https://swapi.co/api/people/${person.id}/`
+ *   - DB `select * from orders where company = ${company.id}`
+ */
+export const retrieveCompanyOrders = async (
+  company: Company,
+): Promise<Order[]> => {
+  const ordersPerCompany = ORDERS_PER_COMPANY();
+  await new Promise(resolve =>
+    setTimeout(
+      resolve,
+      // Apply the anomaly multiplier if enabled and the index is hit.
+      (USE_ANOMALIES && (company.id + 1) % ANOMALY_FREQUENCY === 0
+        ? ANOMALY_MULTIPLIER
+        : 1) *
+        RETRIEVE_ONE_COMPANY_ORDER_DELAY() *
+        ordersPerCompany,
+    ),
+  );
+  return [...Array(ordersPerCompany).keys()].map(
+    (_i): Order => ({
+      id: random.number(100000),
+      productName: commerce.product(),
+      price: commerce.price(),
+      purchaseDate: date.past(1),
+    }),
+  );
+};
+
+/**
+ * Send multiple emails at a time using an email API.
+ * Other real-world examples could be:
+ *   - Dumping the data to a CSV.
+ *   - Inserting the updated data back into the DB.
+ *   - Indexing the data into a elasticsearch.
+ */
+export const sendBulkEmails = async (_bulkEmails: Company[]): Promise<void> => {
+  await new Promise(resolve => setTimeout(resolve, SEND_BULK_EMAILS_DELAY()));
+};
+
+class Timer {
+  public start: number;
+  constructor(private name: string) {
+    this.start = Date.now();
+  }
+  public stop() {
+    const stop = Date.now() - this.start;
+    console.log(`${this.name} took ${stop}ms`);
+    return stop;
+  }
+}
+
+/**
+ * Utility to time-benchmark a function.
+ */
+export const benchmark = async (
+  name: string,
+  approach: (options: BatchProcessingOptions) => Promise<void>,
+  repetitions: number,
+  approachOptions?: BatchProcessingOptions,
+): Promise<number> => {
+  let totalTime = 0;
+  for (let i = 0; i < repetitions; i++) {
+    const t1 = new Timer(`Run ${i + 1}/${repetitions} ${name}`);
+    await approach(approachOptions);
+    totalTime += t1.stop();
+  }
+  const avg = Math.round(totalTime / repetitions);
+  console.log(`Avg ${name}: ${avg}ms`);
+  return avg;
+};
+```
