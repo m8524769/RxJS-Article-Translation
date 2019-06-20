@@ -4,15 +4,19 @@
 > 原文作者：[Ravi Mehra](https://medium.com/@ravishivt)；发表于2019年4月8日<br/>
 > 译者：[yk](https://github.com/m8524769)；如需转载，请注明[出处](https://github.com/m8524769/RxJS-Article-Translation)，谢谢合作！
 
-批处理并不是什么稀奇的东西。不过是检索数据，处理数据，周而复始。它没有花哨的界面，只是接受尽可能少的输入，然后默默的完成工作。但探索如何优化批处理却是一个非常有益的过程。当你一点一点地提升代码的效率时，当你将程序运行时间从几天缩短至几小时，甚至几分钟时，你会觉得自己简直就是一个算法天才。
+批处理并不是什么稀奇的东西。不过是检索数据，处理数据，周而复始。它没有花哨的界面，只是接受尽可能少的输入，然后默默地完成工作。但探索如何优化批处理却是一个非常有意思的过程。当你一点一点地提升代码的效率时，当你将程序运行时间从几天缩短至几小时，甚至几分钟时，你会觉得自己简直就是一个算法天才。
 
 优化策略通常是趋同的：在避免资源过载的情况下，最大限度地提升并发性能。在两者之间做出权衡会是一大挑战。因此，我们需要正确的工具集和处理模型来达到优化目的。[RxJS](https://rxjs.dev/guide/overview) 正是其中之一。
 
-在本文中，我们将着眼于使用 RxJS 以响应式的方法来处理常见的批处理模式。我们还会将此与传统的方式进行比较，并基于视图和基准进行评估。虽然响应式的方法会使编码过程更为复杂，但当你在设计下一个批处理作业时，性能和灵活性的改进会使 RxJS 变得尤为瞩目。
+在本文中，我们将着眼于使用 RxJS 以响应式的方法来处理常见的批处理模式。我们还会将此与传统的方式进行比较，并基于视图和基准进行评估。虽然响应式的方法会使编码过程更为复杂，但当你在设计下一个批处理作业时，性能和灵活性的提升会使 RxJS 变得尤为瞩目。
+
+下图体现了各个方案之间效率的差距，最终我们将达到 5.3 倍的提速！
+
+![](assets/1_MrAFZusUC1UO4f3g00GyqQ.png)
 
 ## 概要
 
-Observable（可观察对象）在批处理作业中表现优秀，推荐使用。
+Observable（可观察对象）是个非常棒的东西，可用于提高批处理作业的效率，但代价是我们需要额外地以响应式的思维方式来思考问题，也许最终并不会提升多少性能，徒增复杂度。
 
 如果你已经很熟悉 RxJS 了，那么我建议你倒过来读这篇文章。首先阅读并分析[使用 observable 的最佳优化代码](https://codesandbox.io/s/m5qmvnklkj?module=%2Fsrc%2Fapproaches%2F4-observableImproved.ts)以获得粗略理解。然后再回到文章中，搞明白它的工作机制以及为何比使用 `Promise.all()` 要来的好。如果你并不是很熟悉 RxJS，也可以这么干，但是会比较吃力。
 
@@ -27,11 +31,11 @@ Observable（可观察对象）在批处理作业中表现优秀，推荐使用�
 
 > 译者注：[Elasticsearch](https://www.elastic.co/cn/) 是一个开源的分布式 RESTful 搜索和分析引擎。
 
-批处理作业可以通过两种方式启动：由开发人员手动执行或按计划任务自动执行（task runner）。理想情况下，手动执行的作业需要几秒钟，或最多几分钟来完成。然而对于开发人员来说，每一秒都很重要。因为在执行完成之前，我们只能干等着。对于我而言，在终端前等的时间越长，就越有可能分心。注意力涣散，意识模糊，然后我就刷起了知乎。理由很简单：“与其干等几分钟，不如刷会儿知乎放松放松”。然后刷着刷着，十几分钟就过去了。
+批处理作业可以通过两种方式启动：由开发人员手动执行或按计划任务自动执行（task runner）。理想情况下，手动执行的作业需要几秒钟，或最多几分钟来完成。然而对于开发人员来说，每一秒都很重要。因为在执行完成之前，我们只能干等着。对于我而言，在终端前等的时间越长，就越有可能分心。注意力涣散，意识模糊，然后就刷起了知乎。理由很简单：“与其干等几分钟，不如刷会儿知乎放松放松”。然后刷着刷着，十几分钟就过去了。
 
-对于自动执行的计划任务，耗时较长的任务就不那么明显了。这种任务一般只要设置完就可以把它抛到脑后了。然而，其糟糕的性能意味着我们不能频繁执行它。对于有些耗时超过一小时的任务，我们就会把它设置成每两小时执行一次，而非每小时执行一次。在任务执行期间，其处理的数据集也可能会因为时间的推移而变“脏”。如果一个计划任务的工作是每小时收集一次统计数据，但需要 40 分钟才能完成，那么报告中的数据究竟是哪个时间的？
+对于自动执行的计划任务来说，耗时较长的任务就不那么碍眼了。这种任务一般只要设置完就可以把它抛到脑后了。然而，其糟糕的性能意味着我们不能频繁执行它。对于有些耗时超过一小时的任务，我们就会把它设置成每两小时执行一次，而非每小时都执行。在任务执行期间，其处理的数据集也可能会因为时间的推移而变“脏”。如果一个计划任务的工作是每小时收集一次统计数据，却要耗时 40 分钟，那么报告中的数据究竟属于哪个时间点？
 
-不过好在几乎所有的批处理作业都可以通过并发（concurrency）来提高效率，而且效果十分明显。由于批处理作业会遍历数据集并执行某些操作，因此采用并发就能显著提高效率。但是，以高效的方式实现并发处理并非易事。
+不过好在几乎所有的批处理作业都可以通过并发（concurrency）来提高效率，而且效果十分明显。由于批处理作业会遍历数据集并执行某些操作，因此采用并发就能显著提高效率。但是，以高效的方式实现并发处理并没有那么容易。
 
 在 JavaScript 中，有很多工具可以帮助我们利用异步操作的并发性，比如 Promise、ES2017 中的 async/await、ES2018 中的异步迭代（async iteration）、NodeJS 流，以及一些第三方库，比如 [bluebird](http://bluebirdjs.com/docs/getting-started.html)、[scramjet](https://github.com/signicode/scramjet) 和 [async](https://github.com/caolan/async)。还有一个就是在前端应用中较为流行的：[RxJS](https://github.com/ReactiveX/rxjs)。这些工具各有千秋，我们会将 RxJS 与其余的几个进行比较。
 
@@ -79,7 +83,7 @@ _本节更适合有 RxJS 使用经验的读者，初学者可随意跳过。_
 
 为了演示该场景，我们将模拟上述三个异步操作。
 
-1. `retrieveCompanies(limit: number, offset: number): Promise<Company[]>` 使用 [faker.js]() 来生成公司数据，数据量为 `totalCompanyCount`，支持 `limit` 和 `offset` 参数来获取分页数据。
+1. `retrieveCompanies(limit: number, offset: number): Promise<Company[]>` 使用 [faker.js](https://github.com/marak/Faker.js/) 来生成公司数据，数据量为 `totalCompanyCount`，支持 `limit` 和 `offset` 参数来获取分页数据。
 2. `retrieveCompanyOrders(company: Company): Promise<Order[]>` 再次使用 faker.js 为每个公司生成个数为 `ORDERS_PER_COMPANY` 的订单。
 3. `sendBulkEmails(emailData: Company[]): Promise<void>` 一个无操作（no-op）调用，因为我们不期望得到任何回复。
 
@@ -111,196 +115,10 @@ const SEND_BULK_EMAILS_DELAY = 60;
 
 并非所有方案都要用到这些参数，有些参数仅在一些进阶场景下才用得到。对于简单的场景，我们不会违反任何约束条件，因为那样效率太低了。
 
-在 `utils.ts` 中，你可以找到上述异步操作的完整实现，包括生成随机数据以及批处理的参数选项。
+在 [_`utils.ts`_](https://codesandbox.io/s/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Futils.ts&view=editor) 中，你可以找到上述异步操作的完整实现，包括生成随机数据以及批处理的参数选项。
 
-utils.ts：
+<iframe src="https://codesandbox.io/embed/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Futils.ts&view=editor" title="rxjs-batch-processing" allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media" style="width:100%; height:500px; border:0; border-radius: 4px; overflow:hidden;" sandbox="allow-modals allow-forms allow-popups allow-scripts allow-same-origin"></iframe>
 
-```typescript
-import { address, commerce, company, date, random } from "faker";
+另外，[_`index.ts`_](https://codesandbox.io/s/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Findex.ts&view=editor) 文件是我们测试每一种方案的入口。每种方案都会测试三次，并最终输出平均结果。如果你对某些测试不感兴趣的话，可以在下面评论。
 
-export interface Company {
-  id: number;
-  name: string;
-  city: string;
-  countryCode: string;
-  orders?: Order[];
-}
-export interface Order {
-  id: number;
-  productName: string;
-  price: string;
-  purchaseDate: Date;
-}
-export interface BatchProcessingOptions {
-  /** The amount of companies to fetch in one request. */
-  batchSize?: number;
-  /** The amount of companies to be queued for processing. */
-  maxQueueSize?: number;
-  /** The number of concurrent requests to fetch companies.  Should be higher than batchSize. */
-  retrieveCompaniesConcurrency?: number;
-  /** The number of concurrent requests to fetch a company's orders. */
-  retrieveOrdersConcurrency?: number;
-  /** The number of concurrent requests to send bulk email.  Should be lower than batchSize. */
-  bulkEmailConcurrency?: number;
-  /** The maximum number of emails to send in one request. */
-  maxBulkEmailCount?: number;
-}
-
-export const defaultBatchProcessingOptions: BatchProcessingOptions = {
-  batchSize: 5,
-  maxQueueSize: 15,
-  retrieveCompaniesConcurrency: 1,
-  retrieveOrdersConcurrency: 5,
-  bulkEmailConcurrency: 5,
-  maxBulkEmailCount: 5,
-};
-
-// retrieveCompanies() will return no data after this limit is reached.
-const TOTAL_COMPANY_COUNT = 100;
-
-/**
- * Enable to introduce anomalies. This will multiply the delay of
- *   `retrieveCompanyOrders()` by `ANOMALY_MULTIPLIER` for every
- *   `ANOMALY_FREQUENCY` companies.
- */
-const USE_ANOMALIES = false;
-const ANOMALY_FREQUENCY = 10;
-const ANOMALY_MULTIPLIER = 10;
-
-// Enable to get random delays and order counts.
-const USE_RANDOMNESS = false;
-
-const RETRIEVE_ONE_COMPANY_DELAY = () =>
-  USE_RANDOMNESS ? random.number({ min: 4, max: 8 }) : 6;
-const RETRIEVE_ONE_COMPANY_ORDER_DELAY = () =>
-  USE_RANDOMNESS ? random.number({ min: 3, max: 7 }) : 5;
-const ORDERS_PER_COMPANY = () =>
-  USE_RANDOMNESS ? random.number({ min: 4, max: 8 }) : 6;
-const SEND_BULK_EMAILS_DELAY = () =>
-  USE_RANDOMNESS ? random.number({ min: 40, max: 80 }) : 60;
-
-export const validateBatchProcessingOptions = (
-  options: BatchProcessingOptions,
-) => {
-  if (options.maxQueueSize < options.batchSize) {
-    console.warn(
-      `Invalid options: maxQueueSize ${
-        options.maxQueueSize
-      } must be higher than batchSize ${options.batchSize}.`,
-    );
-    return;
-  }
-  if (options.maxBulkEmailCount > options.batchSize) {
-    console.warn(
-      `Invalid options: maxBulkEmailCount ${
-        options.maxBulkEmailCount
-      } cannot be higher than ${options.batchSize}.`,
-    );
-    return;
-  }
-};
-
-/**
- * Fetch a chunk or batch of the primary object to iterate on.
- * Examples of a datasource could be:
- *   - API `fetch('https://swapi.co/api/people/')`
- *   - DB `select * from companies limit ${limit} offset ${offset}`
- * Another example is reading a file.  Libraries that read in chunks or
- *   line-by-line can be used in RxJS more natively.a
- */
-export const retrieveCompanies = async (
-  limit: number,
-  offset: number,
-): Promise<Company[]> => {
-  await new Promise(resolve =>
-    setTimeout(resolve, RETRIEVE_ONE_COMPANY_DELAY() * limit),
-  );
-  if (offset > TOTAL_COMPANY_COUNT) {
-    return [];
-  }
-  return [...Array(Math.min(TOTAL_COMPANY_COUNT - offset, limit)).keys()].map(
-    (i): Company => ({
-      id: i + offset,
-      name: company.companyName(),
-      city: address.city(),
-      countryCode: address.countryCode(),
-    }),
-  );
-};
-
-/**
- * For each company, fetch the company's orders.  This serves as an example
- *   where we need to fetch additional data for each of the primary objects
- *   we are iterating over.
- * Examples of a datasource could be:
- *   - API `https://swapi.co/api/people/${person.id}/`
- *   - DB `select * from orders where company = ${company.id}`
- */
-export const retrieveCompanyOrders = async (
-  company: Company,
-): Promise<Order[]> => {
-  const ordersPerCompany = ORDERS_PER_COMPANY();
-  await new Promise(resolve =>
-    setTimeout(
-      resolve,
-      // Apply the anomaly multiplier if enabled and the index is hit.
-      (USE_ANOMALIES && (company.id + 1) % ANOMALY_FREQUENCY === 0
-        ? ANOMALY_MULTIPLIER
-        : 1) *
-        RETRIEVE_ONE_COMPANY_ORDER_DELAY() *
-        ordersPerCompany,
-    ),
-  );
-  return [...Array(ordersPerCompany).keys()].map(
-    (_i): Order => ({
-      id: random.number(100000),
-      productName: commerce.product(),
-      price: commerce.price(),
-      purchaseDate: date.past(1),
-    }),
-  );
-};
-
-/**
- * Send multiple emails at a time using an email API.
- * Other real-world examples could be:
- *   - Dumping the data to a CSV.
- *   - Inserting the updated data back into the DB.
- *   - Indexing the data into a elasticsearch.
- */
-export const sendBulkEmails = async (_bulkEmails: Company[]): Promise<void> => {
-  await new Promise(resolve => setTimeout(resolve, SEND_BULK_EMAILS_DELAY()));
-};
-
-class Timer {
-  public start: number;
-  constructor(private name: string) {
-    this.start = Date.now();
-  }
-  public stop() {
-    const stop = Date.now() - this.start;
-    console.log(`${this.name} took ${stop}ms`);
-    return stop;
-  }
-}
-
-/**
- * Utility to time-benchmark a function.
- */
-export const benchmark = async (
-  name: string,
-  approach: (options: BatchProcessingOptions) => Promise<void>,
-  repetitions: number,
-  approachOptions?: BatchProcessingOptions,
-): Promise<number> => {
-  let totalTime = 0;
-  for (let i = 0; i < repetitions; i++) {
-    const t1 = new Timer(`Run ${i + 1}/${repetitions} ${name}`);
-    await approach(approachOptions);
-    totalTime += t1.stop();
-  }
-  const avg = Math.round(totalTime / repetitions);
-  console.log(`Avg ${name}: ${avg}ms`);
-  return avg;
-};
-```
+<iframe src="https://codesandbox.io/embed/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Findex.ts&view=editor" title="rxjs-batch-processing" allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media" style="width:100%; height:500px; border:0; border-radius: 4px; overflow:hidden;" sandbox="allow-modals allow-forms allow-popups allow-scripts allow-same-origin"></iframe>
