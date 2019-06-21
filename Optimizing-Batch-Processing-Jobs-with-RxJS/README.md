@@ -117,8 +117,107 @@ const SEND_BULK_EMAILS_DELAY = 60;
 
 在 [_`utils.ts`_](https://codesandbox.io/s/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Futils.ts&view=editor) 中，你可以找到上述异步操作的完整实现，包括生成随机数据以及批处理的参数选项。
 
-<iframe src="https://codesandbox.io/embed/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Futils.ts&view=editor" title="rxjs-batch-processing" allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media" style="width:100%; height:500px; border:0; border-radius: 4px; overflow:hidden;" sandbox="allow-modals allow-forms allow-popups allow-scripts allow-same-origin"></iframe>
-
 另外，[_`index.ts`_](https://codesandbox.io/s/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Findex.ts&view=editor) 文件是我们测试每一种方案的入口。每种方案都会测试三次，并最终输出平均结果。如果你对某些测试不感兴趣的话，可以在下面评论。
 
-<iframe src="https://codesandbox.io/embed/m5qmvnklkj?fontsize=14&module=%2Fsrc%2Findex.ts&view=editor" title="rxjs-batch-processing" allow="geolocation; microphone; camera; midi; vr; accelerometer; gyroscope; payment; ambient-light-sensor; encrypted-media" style="width:100%; height:500px; border:0; border-radius: 4px; overflow:hidden;" sandbox="allow-modals allow-forms allow-popups allow-scripts allow-same-origin"></iframe>
+## 方案一——使用 Async/Await 顺序执行
+
+第一个方案是最戆的，就是用 async/await 来遍历每个公司，依次获取他们的订单，然后发邮件，直到 `retrieveCompanies()` 不返回数据为止。`BatchProcessingOptions` 中唯一用到的参数是 `batchSize`，用来控制单次获取的数据量。
+
+```typescript
+export const approach1AsyncAwait = async (options?: BatchProcessingOptions) => {
+  options = {
+    ...defaultBatchProcessingOptions,
+    ...options,
+  };
+  for (
+    let curOffset = 0;
+    curOffset < Infinity;
+    curOffset += options.batchSize
+  ) {
+    const curBatch = await retrieveCompanies(options.batchSize, curOffset);
+    if (curBatch.length === 0) {
+      break;
+    }
+    for (const company of curBatch) {
+      company.orders = await retrieveCompanyOrders(company);
+    }
+    await sendBulkEmails(curBatch);
+  }
+};
+```
+
+### 性能：~5313ms
+
+这将作为我们的性能基线，用于衡量其它几个方案的性能。
+
+### 可视化
+
+![](assets/1_-VJa32h-JXNm6z_Xj4r0EQ.png)
+
+在图表中，我们可以看到三个操作：`retrieveCompanies()`、`retrieveCompanyOrders()` 和 `sendBulkEmails()`。每个水平刻度为 10ms，也就是说，`retrieveCompanies()` 和 `retrieveCompanyOrders()` 花费了 30ms，而 `sendBulkEmails()` 花费了 60ms。每个箭头代表了完成的时间。
+
+每个箭头上的数字对应的是正在处理的公司的索引。`retrieveCompanies()` 上面的 `0-4` 代表获取的头五个公司 `[0-4]`。在 `retrieveCompanyOrders()` 中，各个箭头上的数字代表获取第 n 个公司的订单。
+
+这里的重点是：没有重叠的箭头。每个操作都只在上一个操作完成之后才会开始，这就意味着任何操作都不是并发的，从而拖慢了执行时间。
+
+### 需要改进的方面
+
+最明显的瓶颈就是它的同步和顺序性，如果我们能够同时处理这些订单数据，那么性能将会大幅上升。
+
+## 方案二——使用 Promise.all() 实现并发
+
+`Promise.all()` 允许我们同时运行多个异步操作。它将所有内部的 promise 打包为一个 promise，只有在内部的 promise 统统完成后，它才会 resolve。通过它我们可以为每一批数据同时执行所有的 `retrieveCompanyOrders()`。
+
+```typescript
+export const approach2PromiseAll = async (options?: BatchProcessingOptions) => {
+  options = {
+    ...defaultBatchProcessingOptions,
+    ...options,
+  };
+  for (
+    let curOffset = 0;
+    curOffset < Infinity;
+    curOffset += options.batchSize
+  ) {
+    const curBatch = await retrieveCompanies(options.batchSize, curOffset);
+    if (curBatch.length === 0) {
+      break;
+    }
+    await Promise.all(
+      curBatch.map(async company => {
+        company.orders = await retrieveCompanyOrders(company);
+      }),
+    );
+    await sendBulkEmails(curBatch);
+  }
+};
+```
+
+### 性能：~2631ms
+
+相较于方案一提升了 2.44 倍
+
+### 可视化
+
+![](assets/1_BIwBDeJb6ga-zr4PijUlJQ.png)
+
+对比图表，我们不难发现 `retrieveCompanyOrders()` 是同时进行的，在 320ms 这个时间点上，该方案已经在处理公司 `10-14` 了，而方案一还在处理公司 `5-9`。
+
+### 需要改进的方面
+
+`Promise.all()` 的一个问题是它容易受到最薄弱环节的影响。假设我们在 `Promise.all()` 中执行十个 `retrieveCompanyOrders()`。其中九个都在 20ms 内完成了，而有一个却因为某些原因花了 200ms（比如网络故障）。由于 `Promise.all()` 的性质，使得它得等到 200ms 才能 resolve。那么，我们是否可以继续处理那九个先到的数据，随后再处理最慢的那个？提示：不妨将数据视为流（可观察对象）。
+
+还有一个问题是：即使我们已经实现了 `retrieveCompanyOrders()` 的并发执行，但其余两个异步操作：`retrieveCompanies()` 和 `sendBulkEmails()` 的效率并没有得到提高。
+
+让我们来做个更大胆的设想，目前我们的 pipeline（管道）会等待当前批次的订单处理完成后才会处理下一批。那么我们是否可以在当前的数据处理完成之前就获取下一批数据呢？如此一来，一旦 pipeline 空闲下来，我们就可以预加载下一批数据，然后将其放入队列等待处理。举个例子，假如我的处理队列中有 20 封待发邮件，而我的电子邮件 API 每次最多只能同时发送 5 封，但实际上我可以同时运行两个 `sendBulkEmails()` 来发送前 10 封邮件，随后再以同样的方式发送后 10 封邮件。
+
+为了实现这些改进，我们需要施加一些约束条件，以确保程序的可控性。如果没有约束条件的话，我们也许会过于激进，从而导致内存耗尽；或者触发访问限制；又或者是耗尽数据库连接等等。这些约束条件都包含在之前提到的 `BatchProcessingOptions` 里。
+
+事实上，使用有限的 `async/await` 和 `Promise.*()` 来实现上述的改进是相当困难的。那么该怎么办呢？是时候引入 observable 了！
+
+总结一下优化思路：
+
+1. 避免 `Promise.all()` 受到最薄弱环节的影响。
+2. 使更多的异步任务并发执行。
+3. 通过预加载和数据队列来优化 pipeline。
+4. 通过一些约束条件来限制并发量和数据提取。
