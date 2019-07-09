@@ -221,3 +221,142 @@ export const approach2PromiseAll = async (options?: BatchProcessingOptions) => {
 2. 使更多的异步任务并发执行。
 3. 通过预加载和数据队列来优化 pipeline。
 4. 通过一些约束条件来限制并发量和数据提取。
+
+## 方案三——用 observable 替代 Promise.all()
+
+既然我们已经认识到了上一种方案的局限性，那么我们来看看用 observable 和 RxJS 是否可以做出一些改善。不过在真正展现 observable 的力量之前，我们先尝试一下简单的替换。
+
+该方案并不是为了提高效率或是性能，而只是一个简单的热身，同时也是一个学习的机会。我们将学习一些有趣的 RxJS 操作符，例如：`mergeMap()` 和 `mergeScan()`。我们还将看到 RxJS `Subject` 是如何通过处理分页数据来实现无损背压的。
+
+```typescript
+export const approach3Observable = async (options?: BatchProcessingOptions) => {
+  options = {
+    ...defaultBatchProcessingOptions,
+    ...options,
+  };
+  validateBatchProcessingOptions(options);
+  let curBatchReceivedCount = 0;
+  // 从 0 开始迭代
+  const controller$ = new BehaviorSubject(0);
+
+  return controller$
+    .pipe(
+      /**
+       * 获取下一批数据（当前位置的后 batchSize 条记录）
+       */
+      mergeMap(
+        curOffset => retrieveCompanies(options.batchSize, curOffset),
+        undefined,
+        options.retrieveCompaniesConcurrency,
+      ),
+      /**
+       * 将获取的公司数组打平为单独的公司记录
+       * 这样一来，后面的操作符就可以对每个公司分别进行处理
+       * 当获取的数据为空时，结束迭代
+       */
+      mergeMap(companies => {
+        curBatchReceivedCount = companies.length;
+        if (companies.length === 0) {
+          controller$.complete();
+        }
+        return from(companies);
+      }),
+      // 同时获取各个公司的订单
+      mergeMap(
+        async company => {
+          company.orders = await retrieveCompanyOrders(company);
+          return company;
+        },
+        undefined,
+        options.retrieveOrdersConcurrency,
+      ),
+      /**
+       * 累计当前批次中已处理的公司
+       * 当该批次的数据全部处理完成后，批量发送邮件
+       * 然后继续处理下一批
+       */
+      mergeScan(
+        async (acc: any, company) => {
+          acc.curBatchProcessed.push(company);
+          /**
+           * 我们不能与 `batchSize` 进行比较，因为我们可能无法获取完整批次的数据
+           * 假设总共有 5 个公司，而我们的 `batchSize` 为 3
+           * 那么最后一批数据将只包含两个公司（`companies[3-4]`）
+           */
+          if (acc.curBatchProcessed.length === curBatchReceivedCount) {
+            await sendBulkEmails(acc.curBatchProcessed);
+            acc.curBatchProcessed = [];
+            acc.curOffset += options.batchSize;
+            controller$.next(acc.curOffset);
+          }
+          return acc;
+        },
+        {
+          curBatchProcessed: [],
+          curOffset: 0,
+        },
+        1,
+      ),
+      catchError(async err => {
+        console.log("err", err);
+        return err;
+      }),
+    )
+    .toPromise();
+};
+```
+
+### 以 Observable 的方式思考
+
+要理解这种方法的工作原理，我们首先得考虑如何处理流数据，我喜欢把它比作工厂的流水线。
+
+我们将原始数据投入流水线中，随着流水线的运作，数据会被多个不同的机器加工。有些机器会需要较长的时间来处理数据，以至于跟不上数据获取的速度，就如同下图一样：
+
+![](assets/bLltazi.gif)
+
+为了避免这种情况，我们可以暂停流水线，直到处理器完成当前的工作。当所有的数据都通过了整条流水线的处理后，当前的工作就算完成了。
+
+回到 observable，这里的流水线就可以看作是一个 observable，而流水线中的机器就是 RxJS 中的各种操作符，比如 `mergeMap` 和 `mergeScan`。各个操作符在 `pipe()` 中按顺序排列。
+
+现在让我们分析 `mergeMap` 和 `mergeScan` 操作符的作用。
+
+#### mergeMap
+
+`mergeMap` 在这里极其重要。根据其在[文档](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-mergeMap)中的描述，_它会将每个输入的值分别映射到 observable 中，最后再将它们合并输出。_ 什么意思呢？就是说它可以用来接收数据、处理数据，并把处理完的数据传递给后面的操作符，就好比 `Array.map()`。
+
+但与 `Array.map()` 不同的是，它除了可以将输入值映射为输出值，它还支持仅适用于流数据的 _merge（合并）/ flatten（打平）_ 操作。这里的区别就在于：`mergeMap` 可以输出比它接收的更多/少的数据，并将其合并到输出流中，这也是 `mergeMap` 之前被叫做 `flatMap` 的原因，因为它支持 flatten。
+
+为了解释 `mergeMap` 和 _merge/flatten_，让我们先假设有一条流水线和一些装有甜甜圈的盒子。流水线上有两台机器，其中一台负责将甜甜圈从盒子中取出并放到流水线上，另一台则负责咬一口甜甜圈，以确保食品的质量。
+
+```typescript
+const boxes$ = from([ [d1, d2, d3], [d4, d5, d6] ]);
+
+boxes$.pipe(
+  // 依次打开每个盒子并将甜甜圈放到流水线上
+  mergeMap(box => from(box)),
+  // 用 `bite()` 处理每个流水线上的甜甜圈并输出
+  mergeMap(async donut => {
+    return await bite(donut);
+  })
+)
+```
+
+值得注意的是，在第一个 `mergeMap` 中我用 RxJS 的 `from()` 来打开甜甜圈的盒子，`from()` 会创建一个新的 observable，用于将数组中的每一个对象单独发送出去。随后，`mergeMap` 就会将甜甜圈们分别放到流水线上。另一个值得注意的地方是，在第二个 `mergeMap` 中，返回值并非一定得是 Observable，我要是想返回一个 `Promise` 也是可以的。当返回值为 promise 时，`mergeMap` 会等待其完成，并将结果发送给下游处理。
+
+了解完 `mergeMap` 后，该方案就很好理解了。
+
+```typescript
+// 获取下一批数据（当前位置的后 batchSize 条记录）
+mergeMap(
+  curOffset => retrieveCompanies(options.batchSize, curOffset),
+),
+// 将获取的公司数组打平为单独的公司记录
+mergeMap(companies => {
+  return from(companies);
+}),
+// 现在就可以单独操作每一个公司的数据了
+mergeMap(async company => {
+  company.orders = await retrieveCompanyOrders(company);
+  return company;
+}),
+```
