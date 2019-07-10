@@ -314,19 +314,19 @@ export const approach3Observable = async (options?: BatchProcessingOptions) => {
 
 ![](assets/bLltazi.gif)
 
-为了避免这种情况，我们可以暂停流水线，直到处理器完成当前的工作。当所有的数据都通过了整条流水线的处理后，当前的工作就算完成了。
+为了避免这种情况，我们可以暂停流水线，直到当前的工作完成。当所有的数据都通过了整条流水线的处理后，工作就算完成了。
 
-回到 observable，这里的流水线就可以看作是一个 observable，而流水线中的机器就是 RxJS 中的各种操作符，比如 `mergeMap` 和 `mergeScan`。各个操作符在 `pipe()` 中按顺序排列。
+回到 observable，这里的流水线就可以看作是一个 observable，而流水线中的机器就是 RxJS 中的各种操作符，比如 `mergeMap` 和 `mergeScan`，它们在 `pipe()` 中按顺序排列。
 
 现在让我们分析 `mergeMap` 和 `mergeScan` 操作符的作用。
 
 #### mergeMap
 
-`mergeMap` 在这里极其重要。根据其在[文档](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-mergeMap)中的描述，_它会将每个输入的值分别映射到 observable 中，最后再将它们合并输出。_ 什么意思呢？就是说它可以用来接收数据、处理数据，并把处理完的数据传递给后面的操作符，就好比 `Array.map()`。
+`mergeMap` 在这里极其重要。根据其在[文档](http://reactivex.io/rxjs/class/es6/Observable.js~Observable.html#instance-method-mergeMap)中的描述，_它会将每个输入的值分别映射到 observable 中，最后再将它们合并输出。_ 什么意思呢？就是说它可以用来接收数据、处理数据，并把处理后的数据传递给下面的操作符，就好比 `Array.map()`。
 
-但与 `Array.map()` 不同的是，它除了可以将输入值映射为输出值，它还支持仅适用于流数据的 _merge（合并）/ flatten（打平）_ 操作。这里的区别就在于：`mergeMap` 可以输出比它接收的更多/少的数据，并将其合并到输出流中，这也是 `mergeMap` 之前被叫做 `flatMap` 的原因，因为它支持 flatten。
+但与 `Array.map()` 不同的是，它除了可以用来映射，它还支持仅适用于流数据的 _merge（合并）/ flatten（打平）_ 操作，区别就在于：`mergeMap` 可以输出比它接收的更多/少的数据，并将其合并到输出流中，这也是 `mergeMap` 之前被叫做 `flatMap` 的原因，因为它可以用来 flatten（打平）数据。
 
-为了解释 `mergeMap` 和 _merge/flatten_，让我们先假设有一条流水线和一些装有甜甜圈的盒子。流水线上有两台机器，其中一台负责将甜甜圈从盒子中取出并放到流水线上，另一台则负责咬一口甜甜圈，以确保食品的质量。
+为了解释 `mergeMap` 和 _merge/flatten_，让我们先假设有一条流水线和一些装有甜甜圈的盒子。流水线上共有两台机器，其中一台负责将甜甜圈从盒子中取出并放到流水线上，另一台则负责咬一口甜甜圈，以确保食品的质量。
 
 ```typescript
 const boxes$ = from([ [d1, d2, d3], [d4, d5, d6] ]);
@@ -341,7 +341,7 @@ boxes$.pipe(
 )
 ```
 
-值得注意的是，在第一个 `mergeMap` 中我用 RxJS 的 `from()` 来打开甜甜圈的盒子，`from()` 会创建一个新的 observable，用于将数组中的每一个对象单独发送出去。随后，`mergeMap` 就会将甜甜圈们分别放到流水线上。另一个值得注意的地方是，在第二个 `mergeMap` 中，返回值并非一定得是 Observable，我要是想返回一个 `Promise` 也是可以的。当返回值为 promise 时，`mergeMap` 会等待其完成，并将结果发送给下游处理。
+值得注意的是，在第一个 `mergeMap` 中我用 RxJS 的 `from()` 来打开甜甜圈盒子，`from()` 会创建一个新的 observable，用于将数组中的每一个对象单独发送出去。随后，`mergeMap` 就会将甜甜圈们分别放到流水线上。另一个值得注意的地方是，在第二个 `mergeMap` 中，返回值并非一定得是 Observable，我要是想返回一个 `Promise` 也是可以的。当返回值为 promise 时，`mergeMap` 会等待其完成，并将结果发送给下游处理。
 
 了解完 `mergeMap` 后，该方案就很好理解了。
 
@@ -360,3 +360,13 @@ mergeMap(async company => {
   return company;
 }),
 ```
+
+另外，`mergeMap` 在批处理作业中还有一个十分吸引人的特性，那就是我之前没有提到的并发能力。默认情况下，`mergeMap` 会同时处理所有输入值，有多少就处理多少。我们还可以通过 `concurrent` 参数来控制 `mergeMap` 的并发处理量，假如我们将 `concurrent` 设置为 5，那么 `mergeMap` 将只会同时处理 5 个任务，其余任务则会进入队列。当我们不想让 `mergeMap` 同时处理多个任务时，将 `concurrent` 设置为 1 就行了。
+
+#### mergeMap vs Promise.all
+
+那么 `mergeMap` 和 `Promise.all()` 在并发处理异步任务上究竟有何不同呢？首要的一点就是，`mergeMap` 可以通过 `concurrent` 参数轻易地控制并发量。请记住，我们通常不应将所有任务并发处理，因为可能会导致系统崩溃，达到访问限制，内存耗尽等一系列问题。相对而言，使用 `Promise.all()` 来控制并发量则要困难得多，我们必须将输入的数组分块，以对应我们想要的并发处理量。
+
+第二点是，当 `mergeMap` 完成了一个任务后，它可以立即将数据发给下游处理，而不必像 `Promise.all()` 一样需要等待所有任务都完成。这一切都得益于 observable（即流数据），而 `Promise.all()` 处理的是数组，所以做不到这一点。
+
+当我们遇到网络延迟的故障时，单独处理数据的能力就显得十分有用了
