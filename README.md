@@ -15,4 +15,7 @@ My zh_CN is very very bed, if there is something wrong, welcome [tell me](https:
 [认识 rxjs 中的 Subject](Understanding-rxjs-Subjects/README.md) | 2018-4-17 | [Medium](https://medium.com/@luukgruijs/understanding-rxjs-subjects-339428a1815b)
 [RxJS: 避免因滥用 switchMap 而导致错误](RxJS-Avoiding-switchMap-Related-Bugs/README.md) | 2018-3-12 | [Angular In Depth](https://blog.angularindepth.com/switchmap-bugs-b6de69155524)
 
+上述文章会不定期同步至[掘金专栏](https://juejin.im/user/5cb215af6fb9a0686f3d274a/posts)，想要留评论的小伙伴可以去那边。<br/>
 如果你想看到更多类似的翻译作品，可以看看隔壁 [RxJS 中文社区](https://github.com/RxJS-CN)的[同类优秀文章](https://github.com/RxJS-CN/rxjs-articles-translation)。
+
+另外，如果你有推荐的文章需要翻译的话，直接[提个 issue](https://github.com/m8524769/RxJS-Article-Translation/issues/new) 并附上原文链接就行了，我会尽量在三年内给你整出来。
